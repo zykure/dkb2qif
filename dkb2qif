@@ -30,7 +30,8 @@ with open(input_path, 'r', encoding='iso-8859-1') as infile:
    for row in csv_reader:
       if len(row) == 12 and row[0] != 'Buchungstag':
          transaction = parse_row(row)
-         acc.add_transaction(transaction, header='!Type:Bank')
+         if transaction.amount != 0:
+            acc.add_transaction(transaction, header='!Type:Bank')
    with open(output_path, mode='w') as outfile:
       outfile.write(str(qif_obj))
 
