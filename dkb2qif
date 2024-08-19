@@ -10,28 +10,57 @@ import qifparse.qif as qif
 input_path = sys.argv[1]
 output_path = sys.argv[2]
 
-def parse_row(row):
-   date = datetime.strptime(row[0], '%d.%m.%Y')
-   if row[3]:
-      payee = '{} - {}'.format(row[3], row[4])
-   else:
-      payee = row[4]
-   memo = row[2]
-   amount = float(row[7].replace('.', '').replace(',', '.'))
+def parse_checkings_row(row):
+    assert(len(row) == 12)
+    # Buchungsdatum, Wertstellung, Status, Zahlungspflichtige*r, Zahlungsempfänger*in, Verwendungszweck, Umsatztyp, IBAN, Betrag (€), Gläubiger-ID, Mandatsreferenz, Kundenreferenz
+    date = datetime.strptime(row[0], '%d.%m.%y')  # Buchungsdatum
+    if row[3]:  # Zahlungspflichtige*r
+        payee = '{} - {}'.format(row[3], row[4])  # Zahlungspflichtige*r + Zahlungsempfänger*in
+    else:
+        payee = row[4]  # Zahlungsempfänger*in
+    cleared = ''
+    if row[2] == 'Gebucht':  # Status
+        cleared = '*'
+    memo = row[5]  # Verwendungszweck
+    amount = float(row[8].replace('.', '').replace(',', '.'))  # Betrag
 
-   return qif.Transaction(date=date, amount=amount, payee=payee, memo=memo)
+    return qif.Transaction(date=date, amount=amount, payee=payee, cleared=cleared, memo=memo)
 
-with open(input_path, 'r', encoding='iso-8859-1') as infile:
-   csv_reader = csv.reader(infile, delimiter=';', quotechar='"')
-   qif_obj = qif.Qif()
-   row = next(csv_reader)
-   acc = qif.Account(name=row[1], account_type='Bank')
-   qif_obj.add_account(acc)
-   for row in csv_reader:
-      if len(row) == 12 and row[0] != 'Buchungstag':
-         transaction = parse_row(row)
-         if transaction.amount != 0:
-            acc.add_transaction(transaction, header='!Type:Bank')
-   with open(output_path, mode='w') as outfile:
-      outfile.write(str(qif_obj))
+def parse_savings_row(row):
+    assert(len(row) == 7)
+    # Belegdatum, Wertstellung, Status, Beschreibung, Umsatztyp, Betrag (€), Fremdwährungsbetrag
+    date = datetime.strptime(row[0], '%d.%m.%y')  # Belegdatum
+    cleared = ''
+    if row[2] == 'Gebucht':  # Status
+        cleared = '*'
+    memo = row[3]  # Beschreibung
+    amount = float(row[5].replace('.', '').replace(',', '.'))  # Betrag
 
+    return qif.Transaction(date=date, amount=amount, cleared=cleared, memo=memo)
+
+with open(input_path, 'r', encoding='utf-8') as infile:
+    csv_reader = csv.reader(infile, delimiter=';', quotechar='"')
+    qif_obj = qif.Qif()
+    row = next(csv_reader)
+    # this works for savings and checkings accounts
+    acc = qif.Account(name=row[-2], account_type='Bank', description=row[-1])
+    #print(acc)
+    qif_obj.add_account(acc)
+     
+    for row in csv_reader:
+        print(row)
+        # checkings account has 12 columns
+        if len(row) == 12 and row[0] != 'Buchungsdatum':
+            transaction = parse_checkings_row(row)
+            #print(transaction)
+            if transaction.amount != 0:
+                acc.add_transaction(transaction, header='!Type:Bank')
+        # savings account has 7 columns
+        elif len(row) == 7 and row[0] != 'Belegdatum':
+            transaction = parse_savings_row(row)
+            #print(transaction)
+            if transaction.amount != 0:
+                acc.add_transaction(transaction, header='!Type:Bank')
+
+    with open(output_path, mode='w') as outfile:
+        outfile.write(str(qif_obj))
